@@ -450,21 +450,11 @@ public:
 
     bool operator()(pair<int, MultiMove> &a, pair<int, MultiMove> &b) {
 
-        //pair<int,int> aCoord = a.second.getEndFromMultiMove();
+        pair<int, int> aCoord = a.second.getEndFromMultiMove();
+        pair<int, int> bCoord = b.second.getEndFromMultiMove();
 
-
-        int ax = (a.second.isAdjacentMove ? a.second.adjacent.move.second.first
-                                          : a.second.jump.moves.back().move.second.first);
-        int ay = (a.second.isAdjacentMove ? a.second.adjacent.move.second.second
-                                          : a.second.jump.moves.back().move.second.second);
-
-        int bx = (b.second.isAdjacentMove ? b.second.adjacent.move.second.first
-                                          : b.second.jump.moves.back().move.second.first);
-        int by = (b.second.isAdjacentMove ? b.second.adjacent.move.second.second
-                                          : b.second.jump.moves.back().move.second.second);
-
-        State aNext = state.movePiece(playerColor, a.first, ax, ay);
-        State bNext = state.movePiece(playerColor, b.first, bx, by);
+        State aNext = state.movePiece(playerColor, a.first, aCoord.first, aCoord.second);
+        State bNext = state.movePiece(playerColor, b.first, bCoord.first, bCoord.second);
 
         return evaluation(gameColor, aNext) > evaluation(gameColor, bNext);
     }
@@ -559,7 +549,7 @@ public:
                 board[y_d][x_d] = board[y][x];
                 board[y][x] = '.';
 
-                // Recur, don't come back to original state? Keep visited Map;
+                // Recur
                 addJumpMoves(jumpMoves, state, visited, board, pieceID, x_d, y_d);
 
                 // Restore state
@@ -589,7 +579,6 @@ public:
                 }
             }
         }
-
     }
 
     void
@@ -626,22 +615,20 @@ public:
         if (!jumpMoves.empty()) {
             if (!pieceAtGoal[pieceID]) {
                 for (auto i = 0; i < jumpMoves.size(); i++) {
-                    int x_final = jumpMoves[i].second.jump.moves.back().move.second.first;
-                    int y_final = jumpMoves[i].second.jump.moves.back().move.second.second;
-                    if (pieceMoves[pieceID].find(make_pair(x_final, y_final)) == pieceMoves[pieceID].end())
+                    pair<int,int> coord = jumpMoves[i].second.getEndFromMultiMove();
+                    if (pieceMoves[pieceID].find(coord) == pieceMoves[pieceID].end())
                         moves.emplace_back(jumpMoves[i]);
                 }
             } else {
                 for (auto i = 0; i < jumpMoves.size(); i++) {
-                    int x_final = jumpMoves[i].second.jump.moves.back().move.second.first;
-                    int y_final = jumpMoves[i].second.jump.moves.back().move.second.second;
-                    if (goal.find(make_pair(x_final, y_final)) != goal.end()) {
-                        if (playerColor == 0 && x_final <= x && y_final <= y) {
-                            if (pieceMoves[pieceID].find(make_pair(x_final, y_final)) == pieceMoves[pieceID].end()) {
+                    pair<int,int> coord = jumpMoves[i].second.getEndFromMultiMove();
+                    if (goal.find(coord) != goal.end()) {
+                        if (playerColor == 0 && coord.first <= x && coord.second <= y) {
+                            if (pieceMoves[pieceID].find(coord) == pieceMoves[pieceID].end()) {
                                 moves.emplace_back(jumpMoves[i]);
                             }
-                        } else if (playerColor == 1 && x_final >= x && y_final >= y) {
-                            if (pieceMoves[pieceID].find(make_pair(x_final, y_final)) == pieceMoves[pieceID].end()) {
+                        } else if (playerColor == 1 && coord.first >= x && coord.second >= y) {
+                            if (pieceMoves[pieceID].find(coord) == pieceMoves[pieceID].end()) {
                                 moves.emplace_back(jumpMoves[i]);
                             }
                         }
@@ -741,17 +728,9 @@ public:
                 } else {
                     Node nextNode;
 
-                    if (moves[i].second.isAdjacentMove) {
-                        int x_d = moves[i].second.adjacent.move.second.first;
-                        int y_d = moves[i].second.adjacent.move.second.second;
-                        nextNode = Node(node.state.movePiece(game.color, moves[i].first, x_d, y_d));
-                        nextNode.setMove(moves[i]);
-                    } else {
-                        int x_d = moves[i].second.jump.moves.back().move.second.first;
-                        int y_d = moves[i].second.jump.moves.back().move.second.second;
-                        nextNode = Node(node.state.movePiece(game.color, moves[i].first, x_d, y_d));
-                        nextNode.setMove(moves[i]);
-                    }
+                    pair<int, int> coord = moves[i].second.getEndFromMultiMove();
+                    nextNode = Node(node.state.movePiece(game.color, moves[i].first, coord.first, coord.second));
+                    nextNode.setMove(moves[i]);
 
                     int val = evaluation(game.color,
                                          alphaBetaMove(nextNode, depth - 1, false, alpha, beta,
@@ -788,99 +767,12 @@ public:
                 } else {
                     Node nextNode;
 
-                    if (moves[i].second.isAdjacentMove) {
-                        int x_d = moves[i].second.adjacent.move.second.first;
-                        int y_d = moves[i].second.adjacent.move.second.second;
-                        nextNode = Node(node.state.movePiece(other_color, moves[i].first, x_d, y_d));
-                        nextNode.setMove(moves[i]);
-                    } else {
-                        int x_d = moves[i].second.jump.moves.back().move.second.first;
-                        int y_d = moves[i].second.jump.moves.back().move.second.second;
-                        nextNode = Node(node.state.movePiece(other_color, moves[i].first, x_d, y_d));
-                        nextNode.setMove(moves[i]);
-                    }
+                    pair<int, int> coord = moves[i].second.getEndFromMultiMove();
+                    nextNode = Node(node.state.movePiece(other_color, moves[i].first, coord.first, coord.second));
+                    nextNode.setMove(moves[i]);
 
                     int val = evaluation(game.color,
                                          alphaBetaMove(nextNode, depth - 1, true, alpha, beta,
-                                                       startTime).state);
-
-                    if (val < v) {
-                        candidateNode = nextNode;
-                        v = val;
-                    }
-
-                    beta = min(beta, v);
-                    if (beta <= alpha)
-                        break;
-                }
-            }
-            return candidateNode;
-        }
-    }
-
-    Node alphaBetaGame(Node node, int depth, bool maxPlayer, int alpha, int beta, int startTime) {
-
-        if (depth == 0 || isGoal(node.state))
-            return node;
-
-        if (maxPlayer) {
-            int v = INT_MIN;
-            Node candidateNode = Node();
-
-            vector<Triple> moves;// = generateMoves(node.state, maxPlayer);
-
-            // Sort Moves by eval metric
-            //sort(moves.begin(),moves.end());
-
-            // A Heuristic
-            moves.resize(min(int(moves.size()), 10));
-
-            for (auto i = 0; i < moves.size(); i++) {
-                // Cutoff at maxTime - 10 seconds
-                if (clock() / CLOCKS_PER_SEC - startTime >= 5) {
-                    break;
-                } else {
-                    Node nextNode = Node(
-                            node.state.movePiece(game.color, moves[i].pieceID, moves[i].x, moves[i].y));
-                    int val = evaluation(game.color,
-                                         alphaBetaGame(nextNode, depth - 1, !maxPlayer, alpha, beta,
-                                                       startTime).state);
-
-                    if (val > v) {
-                        candidateNode = nextNode;
-                        v = val;
-                    }
-
-                    alpha = max(alpha, v);
-                    if (beta <= alpha)
-                        break;
-                }
-
-            }
-            return candidateNode;
-        } else {
-            int v = INT_MAX;
-            Node candidateNode = Node();
-            vector<Triple> moves; //= generateMoves(node.state, maxPlayer);
-            int other_color = (game.color == 1 ? 0 : 1);
-
-            // Sort Moves by eval metric
-            MoveCompare c = MoveCompare(node.state, game.color, other_color);
-            //sort(moves.begin(),moves.end());
-
-            // A Heuristic
-            moves.resize(min(int(moves.size()), 10));
-
-            for (auto i = 0; i < moves.size(); i++) {
-                // Cutoff at maxTime - 10 seconds
-                if (clock() / CLOCKS_PER_SEC - startTime >= 5) {
-                    break;
-                } else {
-                    Node nextNode = Node(
-                            node.state.movePiece(other_color, moves[i].pieceID, moves[i].x, moves[i].y));
-
-                    int val = evaluation(game.color,
-                                         alphaBetaGame(nextNode, depth - 1, !maxPlayer, alpha, beta,
                                                        startTime).state);
 
                     if (val < v) {
@@ -973,19 +865,13 @@ public:
 };
 
 int main() {
-    Reader r("input3.txt");
+    Reader r("input2.txt");
     r.read();
 
     Agent a(r.game);
 
     if (r.game.type == 0) {
-
-        vector<pair<int, MultiMove>> m = a.generateMoves(a.initial, true);
-
-        for (auto i = 0; i < m.size(); i++) {
-            cout << m[i].second.getRepr() << endl;
-        }
-        //a.singleMovePlayer();
+        a.singleMovePlayer();
     } else {
         a.simulateGame();
     }
