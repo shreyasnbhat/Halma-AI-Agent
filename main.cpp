@@ -49,7 +49,7 @@ public:
     pair<pair<int, int>, pair<int, int>> move;
 
     Move() {
-        this->move = make_pair(make_pair(-1,-1), make_pair(-1,-1));
+        this->move = make_pair(make_pair(-1, -1), make_pair(-1, -1));
     }
 
     Move(int x, int y, int xd, int yd) {
@@ -58,9 +58,10 @@ public:
         this->move = make_pair(start, end);
     }
 
-    Move(pair<int,int> first, pair<int,int> second) {
+    Move(pair<int, int> first, pair<int, int> second) {
         this->move = make_pair(first, second);
     }
+
     string getRepr() {
         return "E " + to_string(move.first.first) + "," + to_string(move.first.second) + " " +
                to_string(move.second.first) + "," + to_string(move.second.second) + "\n";
@@ -109,8 +110,34 @@ public:
         adjacent = move;
     }
 
+    pair<int, int> getStartFromMultiMove() {
+        int x;
+        int y;
+        if (this->isAdjacentMove) {
+            x = this->adjacent.move.first.first;
+            y = this->adjacent.move.first.second;
+        } else {
+            x = this->jump.moves[0].move.first.first;
+            y = this->jump.moves[0].move.first.second;
+        }
+        return make_pair(x, y);
+    }
+
+    pair<int, int> getEndFromMultiMove() {
+        int x;
+        int y;
+        if (this->isAdjacentMove) {
+            x = this->adjacent.move.second.first;
+            y = this->adjacent.move.second.second;
+        } else {
+            x = this->jump.moves.back().move.second.first;
+            y = this->jump.moves.back().move.second.second;
+        }
+        return make_pair(x, y);
+    }
+
     string getRepr() {
-        if(isJumpMove)
+        if (isJumpMove)
             return jump.getRepr();
         else
             return adjacent.getRepr();
@@ -350,21 +377,29 @@ class Node {
 public:
     State state;
 
-    pair<int,MultiMove> moveMade;
+    pair<int, MultiMove> moveMadeFromThisNode;
+
+    Node *parent;
 
     Node() {
         state = State();
+    }
+
+    Node(const Node &node) {
+        this->state = node.state;
+        this->moveMadeFromThisNode = node.moveMadeFromThisNode;
+        this->parent = node.parent;
     }
 
     Node(State state) {
         this->state = state;
     }
 
-    void setMove(pair<int,MultiMove> moveMade) {
-        this->moveMade = moveMade;
+    void setMove(pair<int, MultiMove> moveMade) {
+        this->moveMadeFromThisNode = moveMade;
     }
-};
 
+};
 
 
 int evaluation(int color, State state) {
@@ -413,16 +448,20 @@ public:
         this->playerColor = playerColor;
     }
 
-    bool operator()(const pair<int,MultiMove>& a, const pair<int,MultiMove>& b) {
+    bool operator()(const pair<int, MultiMove> &a, const pair<int, MultiMove> &b) {
 
-        int ax = (a.second.isAdjacentMove ?  a.second.adjacent.move.second.first : a.second.jump.moves.back().move.second.first);
-        int ay = (a.second.isAdjacentMove ?  a.second.adjacent.move.second.second : a.second.jump.moves.back().move.second.second);
+        int ax = (a.second.isAdjacentMove ? a.second.adjacent.move.second.first
+                                          : a.second.jump.moves.back().move.second.first);
+        int ay = (a.second.isAdjacentMove ? a.second.adjacent.move.second.second
+                                          : a.second.jump.moves.back().move.second.second);
 
-        int bx = (b.second.isAdjacentMove ?  b.second.adjacent.move.second.first : b.second.jump.moves.back().move.second.first);
-        int by = (b.second.isAdjacentMove ?  b.second.adjacent.move.second.second : b.second.jump.moves.back().move.second.second);
+        int bx = (b.second.isAdjacentMove ? b.second.adjacent.move.second.first
+                                          : b.second.jump.moves.back().move.second.first);
+        int by = (b.second.isAdjacentMove ? b.second.adjacent.move.second.second
+                                          : b.second.jump.moves.back().move.second.second);
 
-        State aNext = state.movePiece(playerColor,a.first,ax,ay);
-        State bNext = state.movePiece(playerColor,b.first,bx,by);
+        State aNext = state.movePiece(playerColor, a.first, ax, ay);
+        State bNext = state.movePiece(playerColor, b.first, bx, by);
 
         return evaluation(gameColor, aNext) > evaluation(gameColor, bNext);
     }
@@ -442,6 +481,11 @@ public:
     */
     unordered_map<int, pair<int, int>> whites;
     unordered_map<int, pair<int, int>> blacks;
+
+    /**
+     * Stores a all boxes a piece has visited
+     */
+    map<int, set<pair<int, int>>> pieceMoves;
 
     Agent(Game game) {
         this->game = game;
@@ -463,13 +507,7 @@ public:
         }
 
         initial = State(game.board, whites, blacks, whiteAtGoal, blackAtGoal);
-
-        for (auto i = whites.begin(); i != whites.end(); i++) {
-
-            int pieceID = i->first;
-            int x = i->second.first;
-            int y = i->second.second;
-        }
+        erasePieces(initial, game.color);
     }
 
     bool isGoal(State state) {
@@ -489,7 +527,8 @@ public:
         return x < 16 && y < 16 && x >= 0 && y >= 0;
     }
 
-    void addJumpMoves(vector<pair<int,MultiMove>>& jumpMoves, JumpMove state, unordered_map<int, bool> &visited, vector<string> board, int pieceID, int x, int y) {
+    void addJumpMoves(vector<pair<int, MultiMove>> &jumpMoves, JumpMove state, unordered_map<int, bool> &visited,
+                      vector<string> board, int pieceID, int x, int y) {
 
         // Check all Jump Neighbours
         for (auto i = 0; i < 8; i++) {
@@ -504,12 +543,12 @@ public:
 
             if (!isVisited && legalMove(x_d, y_d) && board[y_d][x_d] == '.' && board[y_i][x_i] != '.') {
 
-                state.addMove(Move(make_pair(x,y),make_pair(x_d,y_d)));
+                state.addMove(Move(make_pair(x, y), make_pair(x_d, y_d)));
 
                 MultiMove m;
                 m.setJumpMove(state);
 
-                jumpMoves.emplace_back(make_pair(pieceID,m));
+                jumpMoves.emplace_back(make_pair(pieceID, m));
 
                 visited[convert1D(x_d, y_d)] = true;
 
@@ -540,7 +579,7 @@ public:
 
         for (auto i = candidate.begin(); i != candidate.end(); i++) {
             if (goal.find(i->second) != goal.end()) {
-                if(type == 0) {
+                if (type == 0) {
                     state.whiteAtGoal[i->first] = true;
                 } else {
                     state.blackAtGoal[i->first] = true;
@@ -550,81 +589,133 @@ public:
 
     }
 
-    vector<pair<int,MultiMove>> generateMoves(State state, bool maxPlayer) {
+    void
+    moveGenerationSubRoutine(const Node &node, bool maxPlayer, vector<pair<int, MultiMove>> &moves, int pieceID, int x,
+                             int y) {
 
-        // We can at minimum have 19*8 moves + 19 * (0 or more Jump Moves)
-        // We should be adding Killer Moves first. Can maybe just return top k moves. Sort by eval score.
-        // If a piece is at goal, then don't generate moves for the piece.
+        State state = node.state;
 
-        vector<pair<int,MultiMove>> moves;
         unordered_map<int, pair<int, int>> candidate;
-        unordered_map<int,bool> pieceAtGoal;
-        set<pair<int,int>> goal;
+        unordered_map<int, bool> pieceAtGoal;
+        set<pair<int, int>> goal;
+
+        int playerColor = 0;
 
         if (maxPlayer) {
             candidate = game.color == 0 ? state.whites : state.blacks;
             pieceAtGoal = (game.color == 0 ? state.whiteAtGoal : state.blackAtGoal);
             goal = (game.color == 0 ? game.goalW : game.goalB);
+            playerColor = (game.color == 0 ? 0 : 1);
         } else {
             candidate = game.color == 0 ? state.blacks : state.whites;
             pieceAtGoal = (game.color == 0 ? state.blackAtGoal : state.whiteAtGoal);
             goal = (game.color == 0 ? game.goalB : game.goalW);
+            playerColor = (game.color == 0 ? 1 : 0);
         }
 
         // whites / blacks stores original positions of W/B pieces
-        for (auto i = candidate.begin(); i != candidate.end(); i++) {
+        vector<pair<int, MultiMove>> jumpMoves;
+        JumpMove jumpState;
+        unordered_map<int, bool> visited;
+        visited[convert1D(x, y)] = true;
+        addJumpMoves(jumpMoves, jumpState, visited, state.board, pieceID, x, y);
 
-            int pieceID = i->first;
-            int x = i->second.first;
-            int y = i->second.second;
-
-            vector<pair<int,MultiMove>> jumpMoves;
-            JumpMove jumpState;
-            unordered_map<int, bool> visited;
-            visited[convert1D(x, y)] = true;
-            addJumpMoves(jumpMoves, jumpState, visited, state.board, pieceID, x, y);
-
-            if (!jumpMoves.empty()) {
-                if (!pieceAtGoal[pieceID]) {
-                    moves.insert(moves.end(), jumpMoves.begin(), jumpMoves.end());
-                } else {
-                    for(auto i = 0; i < jumpMoves.size(); i++) {
-                        int x_final = jumpMoves[i].second.jump.moves.back().move.second.first;
-                        int y_final = jumpMoves[i].second.jump.moves.back().move.second.second;
-                        if(goal.find(make_pair(x_final,y_final)) != goal.end()) {
-                            moves.emplace_back(jumpMoves[i]);
+        if (!jumpMoves.empty()) {
+            if (!pieceAtGoal[pieceID]) {
+                for (auto i = 0; i < jumpMoves.size(); i++) {
+                    int x_final = jumpMoves[i].second.jump.moves.back().move.second.first;
+                    int y_final = jumpMoves[i].second.jump.moves.back().move.second.second;
+                    if (pieceMoves[pieceID].find(make_pair(x_final, y_final)) == pieceMoves[pieceID].end())
+                        moves.emplace_back(jumpMoves[i]);
+                }
+            } else {
+                for (auto i = 0; i < jumpMoves.size(); i++) {
+                    int x_final = jumpMoves[i].second.jump.moves.back().move.second.first;
+                    int y_final = jumpMoves[i].second.jump.moves.back().move.second.second;
+                    if (goal.find(make_pair(x_final, y_final)) != goal.end()) {
+                        if (playerColor == 0 && x_final <= x && y_final <= y) {
+                            if (pieceMoves[pieceID].find(make_pair(x_final, y_final)) == pieceMoves[pieceID].end()) {
+                                moves.emplace_back(jumpMoves[i]);
+                            }
+                        } else if (playerColor == 1 && x_final >= x && y_final >= y) {
+                            if (pieceMoves[pieceID].find(make_pair(x_final, y_final)) == pieceMoves[pieceID].end()) {
+                                moves.emplace_back(jumpMoves[i]);
+                            }
                         }
                     }
                 }
             }
+        }
+        // Adding Non Jump Moves
+        // Add moves within goal if piece at goal
+        // Else add all moves
+        for (auto idx = 0; idx < 8; idx++) {
 
-            // Adding Non Jump Moves
-            // Add moves within goal if piece at goal
-            // Else add all moves
-            for (auto idx = 0; idx < 8; idx++) {
+            int x_d = x + neighbours[idx][0];
+            int y_d = y + neighbours[idx][1];
 
-                int x_d = x + neighbours[idx][0];
-                int y_d = y + neighbours[idx][1];
+            if (pieceMoves[pieceID].find(make_pair(x_d, y_d)) != pieceMoves[pieceID].end())
+                continue;
 
-                if (legalMove(x_d, y_d) && state.board[y_d][x_d] == '.') {
+            if (legalMove(x_d, y_d) && state.board[y_d][x_d] == '.') {
 
-                    if (!pieceAtGoal[pieceID]) {
-                        MultiMove temp;
-                        temp.setAdjacentMove(Move(x,y,x_d,y_d));
-                        moves.emplace_back(make_pair(pieceID,temp));
-                    } else if (pieceAtGoal[pieceID] && goal.find(make_pair(x_d, y_d)) != goal.end()) {
-                        MultiMove temp;
-                        temp.setAdjacentMove(Move(x,y,x_d,y_d));
-                        moves.emplace_back(make_pair(pieceID,temp));
-                    }
+                if (!pieceAtGoal[pieceID]) {
+                    MultiMove temp;
+                    temp.setAdjacentMove(Move(x, y, x_d, y_d));
+                    moves.emplace_back(make_pair(pieceID, temp));
+                } else if (goal.find(make_pair(x_d, y_d)) != goal.end()) {
+                    MultiMove temp;
+                    temp.setAdjacentMove(Move(x, y, x_d, y_d));
+
+                    if (playerColor == 0 && x_d <= x && y_d <= y)
+                        moves.emplace_back(make_pair(pieceID, temp));
+                    else if (playerColor == 1 && x_d >= x && y_d >= y)
+                        moves.emplace_back(make_pair(pieceID, temp));
                 }
+            }
+        }
+
+    }
+
+    vector<pair<int, MultiMove>> generateMoves(Node node, bool maxPlayer) {
+
+        // We can at minimum have 19*8 moves + 19 * (0 or more Jump Moves)
+        // We should be adding Killer Moves first. Can maybe just return top k moves. Sort by eval score.
+        // If a piece is at goal, then don't generate moves for the piece.
+        State state = node.state;
+        set<pair<int, int>> camp;
+        unordered_map<int, pair<int, int>> candidate;
+        vector<pair<int, MultiMove>> moves;
+
+        if (maxPlayer) {
+            candidate = game.color == 0 ? state.whites : state.blacks;
+            camp = (game.color == 1 ? game.goalW : game.goalB);
+        } else {
+            candidate = game.color == 0 ? state.blacks : state.whites;
+            camp = (game.color == 1 ? game.goalB : game.goalW);
+        }
+
+        // Check if pieces still in base camp
+        bool arePiecesinBaseCamp = false;
+        for (auto i = candidate.begin(); i != candidate.end(); i++) {
+            if (camp.find(i->second) != camp.end()) {
+                moveGenerationSubRoutine(node, maxPlayer, moves, i->first, i->second.first, i->second.second);
+            }
+        }
+
+        // Ensures pieces inside camp are moved first.
+        if (moves.size() != 0) {
+            return moves;
+        } else {
+            for (auto i = candidate.begin(); i != candidate.end(); i++) {
+                moveGenerationSubRoutine(node, maxPlayer, moves, i->first, i->second.first, i->second.second);
             }
         }
 
         return moves;
     }
 
-    Node alphaBetaMove(Node node, int depth, bool maxPlayer, int alpha, int beta, int startTime) {
+    Node alphaBetaMove(Node &node, int depth, bool maxPlayer, int alpha, int beta, int startTime) {
 
         if (depth == 0 || isGoal(node.state))
             return node;
@@ -632,13 +723,13 @@ public:
         if (maxPlayer) {
             int v = INT_MIN;
             Node candidateNode = Node();
-            vector<pair<int,MultiMove>> moves = generateMoves(node.state, maxPlayer);
+            vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
             // Sort Moves by eval metric
             sort(moves.begin(), moves.end(), MoveCompare(node.state, game.color, game.color));
 
             // A Heuristic
-            moves.resize(min(int(moves.size()),10));
+            moves.resize(min(int(moves.size()), 10));
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
@@ -647,19 +738,21 @@ public:
                 } else {
                     Node nextNode;
 
-                    if(moves[i].second.isAdjacentMove) {
+                    if (moves[i].second.isAdjacentMove) {
                         int x_d = moves[i].second.adjacent.move.second.first;
                         int y_d = moves[i].second.adjacent.move.second.second;
-                        nextNode = Node(node.state.movePiece(game.color, moves[i].first, x_d ,y_d));
+                        nextNode = Node(node.state.movePiece(game.color, moves[i].first, x_d, y_d));
                         nextNode.setMove(moves[i]);
                     } else {
                         int x_d = moves[i].second.jump.moves.back().move.second.first;
                         int y_d = moves[i].second.jump.moves.back().move.second.second;
-                        nextNode = Node(node.state.movePiece(game.color, moves[i].first, x_d ,y_d));
+                        nextNode = Node(node.state.movePiece(game.color, moves[i].first, x_d, y_d));
                         nextNode.setMove(moves[i]);
                     }
 
-                    int val = evaluation(game.color, alphaBetaMove(nextNode, depth - 1, false, alpha, beta, startTime).state);
+                    int val = evaluation(game.color,
+                                         alphaBetaMove(nextNode, depth - 1, false, alpha, beta,
+                                                       startTime).state);
                     if (val > v) {
                         candidateNode = nextNode;
                         v = val;
@@ -675,7 +768,7 @@ public:
         } else {
             int v = INT_MAX;
             Node candidateNode = Node();
-            vector<pair<int,MultiMove>> moves = generateMoves(node.state, maxPlayer);
+            vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
             int other_color = (game.color == 1 ? 0 : 1);
 
@@ -683,7 +776,7 @@ public:
             sort(moves.begin(), moves.end(), MoveCompare(node.state, game.color, other_color));
 
             // A Heuristic
-            moves.resize(min(int(moves.size()),10));
+            moves.resize(min(int(moves.size()), 10));
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
@@ -692,19 +785,21 @@ public:
                 } else {
                     Node nextNode;
 
-                    if(moves[i].second.isAdjacentMove) {
+                    if (moves[i].second.isAdjacentMove) {
                         int x_d = moves[i].second.adjacent.move.second.first;
                         int y_d = moves[i].second.adjacent.move.second.second;
-                        nextNode = Node(node.state.movePiece(other_color, moves[i].first, x_d ,y_d));
+                        nextNode = Node(node.state.movePiece(other_color, moves[i].first, x_d, y_d));
                         nextNode.setMove(moves[i]);
                     } else {
                         int x_d = moves[i].second.jump.moves.back().move.second.first;
                         int y_d = moves[i].second.jump.moves.back().move.second.second;
-                        nextNode = Node(node.state.movePiece(other_color, moves[i].first, x_d ,y_d));
+                        nextNode = Node(node.state.movePiece(other_color, moves[i].first, x_d, y_d));
                         nextNode.setMove(moves[i]);
                     }
 
-                    int val = evaluation(game.color, alphaBetaMove(nextNode, depth - 1, true, alpha, beta, startTime).state);
+                    int val = evaluation(game.color,
+                                         alphaBetaMove(nextNode, depth - 1, true, alpha, beta,
+                                                       startTime).state);
 
                     if (val < v) {
                         candidateNode = nextNode;
@@ -735,15 +830,18 @@ public:
             //sort(moves.begin(),moves.end());
 
             // A Heuristic
-            moves.resize(min(int(moves.size()),10));
+            moves.resize(min(int(moves.size()), 10));
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
                 if (clock() / CLOCKS_PER_SEC - startTime >= 5) {
                     break;
                 } else {
-                    Node nextNode = Node(node.state.movePiece(game.color, moves[i].pieceID, moves[i].x, moves[i].y));
-                    int val = evaluation(game.color, alphaBetaGame(nextNode, depth - 1, !maxPlayer, alpha, beta, startTime).state);
+                    Node nextNode = Node(
+                            node.state.movePiece(game.color, moves[i].pieceID, moves[i].x, moves[i].y));
+                    int val = evaluation(game.color,
+                                         alphaBetaGame(nextNode, depth - 1, !maxPlayer, alpha, beta,
+                                                       startTime).state);
 
                     if (val > v) {
                         candidateNode = nextNode;
@@ -768,16 +866,19 @@ public:
             //sort(moves.begin(),moves.end());
 
             // A Heuristic
-            moves.resize(min(int(moves.size()),10));
+            moves.resize(min(int(moves.size()), 10));
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
                 if (clock() / CLOCKS_PER_SEC - startTime >= 5) {
                     break;
                 } else {
-                    Node nextNode = Node(node.state.movePiece(other_color, moves[i].pieceID, moves[i].x, moves[i].y));
+                    Node nextNode = Node(
+                            node.state.movePiece(other_color, moves[i].pieceID, moves[i].x, moves[i].y));
 
-                    int val = evaluation(game.color, alphaBetaGame(nextNode, depth - 1, !maxPlayer, alpha, beta, startTime).state);
+                    int val = evaluation(game.color,
+                                         alphaBetaGame(nextNode, depth - 1, !maxPlayer, alpha, beta,
+                                                       startTime).state);
 
                     if (val < v) {
                         candidateNode = nextNode;
@@ -801,45 +902,67 @@ public:
 
         // Write Output
         Writer writer("output.txt");
-        writer.write(result.moveMade.second.getRepr());
-        cout << result.moveMade.second.getRepr() << endl;
+        writer.write(result.moveMadeFromThisNode.second.getRepr());
+        cout << result.moveMadeFromThisNode.second.getRepr() << endl;
     }
 
     void simulateGame() {
-        State init = this->initial;
+        Node init = Node(this->initial);
+        Node *p1 = NULL;
+        Node *p2 = NULL;
 
         for (auto i = 0; i < 500; i++) {
             cout << i << endl;
             if (i % 2 == 0) {
                 // Play
-                Node node = Node(init);
+                init.parent = p1;
                 game.color = 0;
 
                 int start = clock() / CLOCKS_PER_SEC;
                 cout << "Start Time: " << start << endl;
-                Node result = alphaBetaMove(node, 3, true, INT_MIN, INT_MAX, start);
+                Node result = alphaBetaMove(init, 1, true, INT_MIN, INT_MAX, start);
+
+                p1 = &init;
+
+                // Add piece origin to history
+                pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
+                pieceMoves[result.moveMadeFromThisNode.first].insert(startCoord);
 
                 erasePieces(result.state, game.color);
 
                 int end = clock() / CLOCKS_PER_SEC;
-                init = result.state;
+                init = result;
 
-                printBoard(init.board);
+                printBoard(result.state.board);
+
+                if (isGoal(result.state))
+                    break;
 
             } else {
                 // Play opponent
-                Node node = Node(init);
+                init.parent = p2;
 
                 int start = clock() / CLOCKS_PER_SEC;
                 cout << "Start Time: " << start << endl;
                 game.color = 1;
-                Node result = alphaBetaMove(node, 2, true, INT_MIN, INT_MAX, start);
+                Node result = alphaBetaMove(init, 1, true, INT_MIN, INT_MAX, start);
+
+                p2 = &init;
+
+                // Add piece origin to history
+                pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
+                pieceMoves[result.moveMadeFromThisNode.first].insert(startCoord);
 
                 erasePieces(result.state, game.color);
 
                 int end = clock() / CLOCKS_PER_SEC;
-                init = result.state;
-                printBoard(init.board);
+                init = result;
+
+                printBoard(result.state.board);
+
+                if (isGoal(result.state))
+                    break;
+
             }
         }
     }
@@ -847,15 +970,19 @@ public:
 };
 
 int main() {
-    Reader r("input.txt");
+    Reader r("input3.txt");
     r.read();
 
     Agent a(r.game);
 
-    if(r.game.type == 0) {
+    if (r.game.type == 0) {
 
-        vector<pair<int,MultiMove>> m = a.generateMoves(a.initial,true);
-        a.singleMovePlayer();
+        vector<pair<int, MultiMove>> m = a.generateMoves(a.initial, true);
+
+        for (auto i = 0; i < m.size(); i++) {
+            cout << m[i].second.getRepr() << endl;
+        }
+        //a.singleMovePlayer();
     } else {
         a.simulateGame();
     }
