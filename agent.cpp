@@ -8,6 +8,10 @@ using namespace std;
 #define ROW(val) val / 16
 #define COL(val) val % 16
 
+int lineSide(int xm,int ym) {
+    return (xm - ym + 4 >= 0) && (xm - ym - 4 <= 0);
+}
+
 template<typename T>
 std::vector<T> make1D(std::size_t capacity) {
     return std::vector<T>(capacity);
@@ -111,8 +115,8 @@ public:
     }
 
     pair<int, int> getStartFromMultiMove() {
-        int x;
-        int y;
+        int x = -1;
+        int y = -1;
         if (this->isAdjacentMove) {
             x = this->adjacent.move.first.first;
             y = this->adjacent.move.first.second;
@@ -124,8 +128,8 @@ public:
     }
 
     pair<int, int> getEndFromMultiMove() {
-        int x;
-        int y;
+        int x = -1;
+        int y = -1;
         if (this->isAdjacentMove) {
             x = this->adjacent.move.second.first;
             y = this->adjacent.move.second.second;
@@ -415,25 +419,29 @@ int evaluation(int color, State state) {
     // Vertical Displacement + Horizontal Displacement
     if (color == 0) {
         for (auto i = plus.begin(); i != plus.end(); i++) {
-            v += (15 - i->second.second);
-            h += (15 - i->second.first);
+            bool withinLine = lineSide(i->second.first,i->second.second);
+            v += (withinLine ? 2 * (15 - i->second.second): 15 - i->second.second);
+            h += (withinLine ? 2 * (15 - i->second.first): 15 - i->second.first);
         }
         for (auto i = minus.begin(); i != minus.end(); i++) {
-            v -= (i->second.second);
-            h -= (i->second.first);
+            bool withinLine = lineSide(i->second.first,i->second.second);
+            v -= (withinLine ? i->second.second: 2 * i->second.second);
+            h -= (withinLine ? i->second.first:  2 * i->second.first);
         }
     } else {
         for (auto i = plus.begin(); i != plus.end(); i++) {
-            v -= (15 - i->second.second);
-            h -= (15 - i->second.first);
+            bool withinLine = lineSide(i->second.first,i->second.second);
+            v -= (withinLine ? 15 - i->second.second: 2 * (15 - i->second.second));
+            h -= (withinLine ? 15 - i->second.first:  2 * (15 - i->second.first));
         }
         for (auto i = minus.begin(); i != minus.end(); i++) {
-            v += (i->second.second);
-            h += (i->second.first);
+            bool withinLine = lineSide(i->second.first,i->second.second);
+            v += (withinLine ? 2 * i->second.second: i->second.second);
+            h += (withinLine ? 2 * i->second.first: i->second.first);
         }
     }
 
-    return v + h;
+    return v   + h ;
 }
 
 class MoveCompare {
@@ -503,17 +511,34 @@ public:
         erasePieces(initial, game.color);
     }
 
+    // Need to handle case where blacks don't move.
     bool isGoal(State state) {
-        bool flag = true;
 
-        unordered_map<int, pair<int, int>> pieces = (game.color == 0 ? state.whites : state.blacks);
+        unordered_map<int, pair<int, int>> playerPieces = (game.color == 0 ? state.whites : state.blacks);
+        unordered_map<int, pair<int, int>> opponentPieces = (game.color == 0 ? state.blacks : state.whites);
+        set<pair<int,int>> opponentsInBaseCamp;
         set<pair<int, int>> goal = (game.color == 0 ? game.goalW : game.goalB);
 
-        for (auto i = pieces.begin(); i != pieces.end(); i++) {
-            flag &= (goal.find(i->second) != goal.end());
+        for (auto i = opponentPieces.begin(); i != opponentPieces.end(); i++) {
+            if(goal.find(i->second) != goal.end()) {
+                opponentsInBaseCamp.insert(i->second);
+            }
         }
 
-        return flag;
+        if(opponentsInBaseCamp.size() == 19)
+            return false;
+
+        set<pair<int, int>> emptySlotsAtGoal;
+        set_difference(goal.begin(), goal.end(), opponentsInBaseCamp.begin(), opponentsInBaseCamp.end(),
+                            std::inserter(emptySlotsAtGoal, emptySlotsAtGoal.end()));
+
+        for (auto i = playerPieces.begin(); i != playerPieces.end(); i++) {
+            if(emptySlotsAtGoal.find(i->second) != emptySlotsAtGoal.end()) {
+                emptySlotsAtGoal.erase(i->second);
+            }
+        }
+
+        return (emptySlotsAtGoal.empty());
     }
 
     bool legalMove(int x, int y) {
@@ -711,6 +736,9 @@ public:
             return node;
 
         if (maxPlayer) {
+
+            //cout << "Max Move at: " << depth << endl;
+
             int v = INT_MIN;
             Node candidateNode = Node();
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
@@ -738,6 +766,7 @@ public:
                     if (val > v) {
                         candidateNode = nextNode;
                         v = val;
+                        //cout << "Max: " << moves.size() << " " << i << " " << v << " " << val << endl;
                     }
 
                     alpha = max(alpha, v);
@@ -746,8 +775,14 @@ public:
                 }
 
             }
+
+            //cout << "Max Move ends at: " << depth << endl;
+
             return candidateNode;
         } else {
+
+            //cout << "Min Move at: " << depth << endl;
+
             int v = INT_MAX;
             Node candidateNode = Node();
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
@@ -762,7 +797,7 @@ public:
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
-                if (game.timeLeft - (clock() / CLOCKS_PER_SEC - startTime) <= 10) {
+                if (game.timeLeft - (clock() / CLOCKS_PER_SEC - startTime) <= 1) {
                     break;
                 } else {
                     Node nextNode;
@@ -778,6 +813,7 @@ public:
                     if (val < v) {
                         candidateNode = nextNode;
                         v = val;
+                        //cout << "Min: " << moves.size() << " " << i << " " << v << " " << val << endl;
                     }
 
                     beta = min(beta, v);
@@ -785,6 +821,9 @@ public:
                         break;
                 }
             }
+
+            //cout << "Min Move ends at: " << depth << endl;
+
             return candidateNode;
         }
     }
@@ -813,9 +852,12 @@ public:
                 init.parent = p1;
                 game.color = 0;
 
+                if (isGoal(init.state))
+                    break;
+
                 int start = clock() / CLOCKS_PER_SEC;
                 cout << "Start Time: " << start << endl;
-                Node result = alphaBetaMove(init, 1, true, INT_MIN, INT_MAX, start);
+                Node result = alphaBetaMove(init, 2, true, INT_MIN, INT_MAX, start);
 
                 p1 = &init;
 
@@ -830,16 +872,16 @@ public:
 
                 printBoard(result.state.board);
 
-                if (isGoal(result.state))
-                    break;
-
             } else {
                 // Play opponent
                 init.parent = p2;
+                game.color = 1;
+
+                if (isGoal(init.state))
+                    break;
 
                 int start = clock() / CLOCKS_PER_SEC;
                 cout << "Start Time: " << start << endl;
-                game.color = 1;
                 Node result = alphaBetaMove(init, 1, true, INT_MIN, INT_MAX, start);
 
                 p2 = &init;
@@ -854,10 +896,6 @@ public:
                 init = result;
 
                 printBoard(result.state.board);
-
-                if (isGoal(result.state))
-                    break;
-
             }
         }
     }
@@ -865,7 +903,7 @@ public:
 };
 
 int main() {
-    Reader r("input2.txt");
+    Reader r("input3.txt");
     r.read();
 
     Agent a(r.game);
