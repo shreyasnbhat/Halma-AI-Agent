@@ -267,6 +267,9 @@ public:
         int lineCount = 0;
 
         while (std::getline(in, str)) {
+
+            str.erase( std::remove(str.begin(), str.end(), '\r'), str.end() );
+
             // output the line
             if (lineCount == 0) {
                 if (str == "SINGLE")
@@ -405,6 +408,7 @@ public:
 
 };
 
+
 int evaluation(int color, State state) {
 
     int v = 0;
@@ -490,6 +494,7 @@ public:
 
     /**
      * Stores a all boxes a piece has visited
+     * Potentially in playData.txt
      */
     map<int, set<pair<int, int>>> pieceMoves;
 
@@ -499,21 +504,120 @@ public:
         unordered_map<int, bool> whiteAtGoal;
         unordered_map<int, bool> blackAtGoal;
 
-        // Add pieces to each map
-        for (auto i = 0; i < 16; i++) {
-            for (auto j = 0; j < 16; j++) {
-                if (game.board[i][j] == 'W') {
-                    whites[convert1D(j, i)] = make_pair(j, i);
-                    //whiteAtGoal[convert1D(i, j)] = false;
-                } else if (game.board[i][j] == 'B') {
-                    blacks[convert1D(j, i)] = make_pair(j, i);
-                    //blackAtGoal[convert1D(j, i)] = false;
+        vector<int> whitePieceIDs = {};
+        vector<int> blackPieceIDs = {};
+
+        ifstream in("playdata.txt");
+
+        // Single games don't read playdata.txt
+        if (!in.is_open() || game.type == 0) {
+            perror("error while opening file");
+            // Add pieces to each map
+            for (auto i = 0; i < 16; i++) {
+                for (auto j = 0; j < 16; j++) {
+                    if (game.board[i][j] == 'W') {
+                        whites[convert1D(j, i)] = make_pair(j, i);
+                        //whiteAtGoal[convert1D(i, j)] = false;
+                    } else if (game.board[i][j] == 'B') {
+                        blacks[convert1D(j, i)] = make_pair(j, i);
+                        //blackAtGoal[convert1D(j, i)] = false;
+                    }
+                }
+            }
+        } else {
+            readPlayData();
+        }
+
+        erasePieces(initial, 0);
+        erasePieces(initial, 1);
+        initial = State(game.board, whites, blacks, whiteAtGoal, blackAtGoal);
+    }
+
+    void writePlayData() {
+
+        string content;
+
+        for(auto i = whites.begin(); i!= whites.end(); i++) {
+            int pieceID = i->first;
+            pair<int,int> s = i->second;
+            content.append(to_string(pieceID) + " ");
+            content.append(to_string(convert1D(s.first, s.second)) + "\n");
+        }
+
+        content.append("BREAK\n");
+
+        for(auto k = blacks.begin(); k!= blacks.end(); k++) {
+            int pieceID = k->first;
+            pair<int,int> s = k->second;
+            content.append(to_string(pieceID) + " ");
+            content.append(to_string(convert1D(s.first, s.second)) + "\n");
+        }
+
+        content.append("BREAK\n");
+
+        for(auto i = pieceMoves.begin(); i!= pieceMoves.end(); i++) {
+            int key = i->first;
+            set<pair<int,int>> s = i->second;
+
+            if(s.size() != 0) {
+                content.append(to_string(key) + " ");
+                int size = s.size();
+                int ctr = 0;
+
+                for (auto k = s.begin(); k != s.end(); k++) {
+                    if (ctr < size - 1)
+                        content.append(to_string(convert1D(k->first, k->second)) + " ");
+                    else
+                        content.append(to_string(convert1D(k->first, k->second)) + "\n");
+                    ctr++;
                 }
             }
         }
 
-        initial = State(game.board, whites, blacks, whiteAtGoal, blackAtGoal);
-        erasePieces(initial, game.color);
+        Writer w("playdata.txt");
+        w.write(content);
+    }
+
+    void readPlayData() {
+        ifstream in("playdata.txt");
+
+        if (!in.is_open()) {
+            perror("error while opening file");
+            return;
+        }
+        int ctr = 1;
+        string str;
+        while (std::getline(in, str)) {
+            istringstream ss(str);
+            string word;
+            ss >> word;
+            int key = atoi(word.c_str());
+
+            do {
+                string word;
+                ss >> word;
+                // Print the read word
+                int val = atoi(word.c_str());
+                int x = COL(val);
+                int y = ROW(val);
+
+                if(word.size() != 0) {
+                    if (ctr <= 19) {
+                        //cout << "White: " << key << " " << x << " " << y << endl;
+                        whites[key] = make_pair(x, y);
+                        break;
+                    } else if (ctr > 20 && ctr <= 39) {
+                        //cout << "Black: " << key << " " << x << " " << y << endl;
+                        blacks[key] = make_pair(x, y);
+                        break;
+                    } else if(ctr > 40){
+                        pieceMoves[key].insert(make_pair(x, y));
+                        //cout << "Key: " << key << " " << x << " " << y << endl;
+                    }
+                }
+            } while (ss);
+            ctr++;
+        }
     }
 
     // Need to handle case where blacks don't move.
@@ -535,7 +639,7 @@ public:
 
         set<pair<int, int>> emptySlotsAtGoal;
         set_difference(goal.begin(), goal.end(), opponentsInBaseCamp.begin(), opponentsInBaseCamp.end(),
-                            std::inserter(emptySlotsAtGoal, emptySlotsAtGoal.end()));
+                       std::inserter(emptySlotsAtGoal, emptySlotsAtGoal.end()));
 
         for (auto i = playerPieces.begin(); i != playerPieces.end(); i++) {
             if(emptySlotsAtGoal.find(i->second) != emptySlotsAtGoal.end()) {
@@ -667,7 +771,7 @@ public:
                         // Base Camp to outside move
                         moves.emplace_back(jumpMoves[i]);
                     } else if(pieceMoves[pieceID].find(coord) == pieceMoves[pieceID].end()) {
-                            moves.emplace_back(jumpMoves[i]);
+                        moves.emplace_back(jumpMoves[i]);
                     }
                 }
             } else {
@@ -733,6 +837,8 @@ public:
                 }
             }
         }
+
+        //cout << "Got moves for PieceID: " << pieceID << endl;
     }
 
     vector<pair<int, MultiMove>> generateMoves(Node node, bool maxPlayer) {
@@ -762,7 +868,7 @@ public:
         }
 
         // Ensures pieces inside camp are moved first.
-        if (!moves.empty()) {
+        if (moves.size() != 0) {
             return moves;
         } else {
             for (auto i = candidate.begin(); i != candidate.end(); i++) {
@@ -779,18 +885,15 @@ public:
             return node;
 
         if (maxPlayer) {
-
-            //cout << "Max Move at: " << depth << endl;
-
             int v = INT_MIN;
             Node candidateNode = Node();
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
             // Sort Moves by eval metric
-            //sort(moves.begin(), moves.end(), MoveCompare(node.state, game.color, game.color));
+            sort(moves.begin(), moves.end(), MoveCompare(node.state, game.color, game.color));
 
             // A Heuristic
-            //moves.resize(min(int(moves.size()), 10));
+            moves.resize(min(int(moves.size()), 10));
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
@@ -809,7 +912,6 @@ public:
                     if (val > v) {
                         candidateNode = nextNode;
                         v = val;
-                        //cout << "Max: " << moves.size() << " " << i << " " << v << " " << val << endl;
                     }
 
                     alpha = max(alpha, v);
@@ -819,12 +921,8 @@ public:
 
             }
 
-            //cout << "Max Move ends at: " << depth << endl;
-
             return candidateNode;
         } else {
-
-            //cout << "Min Move at: " << depth << endl;
 
             int v = INT_MAX;
             Node candidateNode = Node();
@@ -833,10 +931,10 @@ public:
             int other_color = (game.color == 1 ? 0 : 1);
 
             // Sort Moves by eval metric
-            //sort(moves.begin(), moves.end(), MoveCompare(node.state, game.color, other_color));
+            sort(moves.begin(), moves.end(), MoveCompare(node.state, game.color, other_color));
 
             // A Heuristic
-            //moves.resize(min(int(moves.size()), 10));
+            moves.resize(min(int(moves.size()), 10));
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
@@ -856,7 +954,6 @@ public:
                     if (val < v) {
                         candidateNode = nextNode;
                         v = val;
-                        //cout << "Min: " << moves.size() << " " << i << " " << v << " " << val << endl;
                     }
 
                     beta = min(beta, v);
@@ -865,106 +962,50 @@ public:
                 }
             }
 
-            //cout << "Min Move ends at: " << depth << endl;
-
             return candidateNode;
         }
     }
 
-    void singleMovePlayer() {
+    void singleMovePlayer(int depth) {
         Node initial = Node(this->initial);
+
+        if (isGoal(initial.state))
+            return;
+
         int start = clock() / CLOCKS_PER_SEC;
-        Node result = alphaBetaMove(initial, 1, true, INT_MIN, INT_MAX, start);
-        //printBoard(result.state.board);
+        Node result = alphaBetaMove(initial, depth, true, INT_MIN, INT_MAX, start);
+
+        // Adding pieceHistory
+        int pieceID = result.moveMadeFromThisNode.first;
+        pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
+        pieceMoves[pieceID].insert(startCoord);
+
+        printBoard(result.state.board);
+        cout << endl;
+
+        whites = result.state.whites;
+        blacks = result.state.blacks;
 
         // Write Output
         Writer writer("output.txt");
         writer.write(result.moveMadeFromThisNode.second.getRepr());
-        cout << result.moveMadeFromThisNode.second.getRepr() << endl;
-    }
-
-    void simulateGame() {
-        Node init = Node(this->initial);
-
-        int aTime = 0;
-        int bTime = 0;
-
-        for (auto i = 0; i < 500; i++) {
-            cout << i << endl;
-            if (i % 2 == 0) {
-                // Play
-                if (isGoal(init.state))
-                    break;
-
-                int start = clock() / CLOCKS_PER_SEC;
-                cout << "Start Time: " << start << endl;
-                Node result = alphaBetaMove(init, 2, true, INT_MIN, INT_MAX, start);
-
-                erasePieces(init.state, 0);
-                erasePieces(init.state, 1);
-
-                // Add piece origin to history
-                pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
-                pieceMoves[result.moveMadeFromThisNode.first].insert(startCoord);
-
-                //erasePieces(result.state, game.color);
-
-                int end = clock() / CLOCKS_PER_SEC;
-
-                aTime += (end - start);
-
-                init = result;
-
-                printBoard(result.state.board);
-
-            } else {
-                // Play opponent
-                game.color = (game.color == 0 ? 1 : 0);
-
-                if (isGoal(init.state))
-                    break;
-
-                erasePieces(init.state, 0);
-                erasePieces(init.state, 1);
-
-                int start = clock() / CLOCKS_PER_SEC;
-                cout << "Start Time: " << start << endl;
-                Node result = alphaBetaMove(init, 2, true, INT_MIN, INT_MAX, start);
-
-                // Add piece origin to history
-                pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
-                pieceMoves[result.moveMadeFromThisNode.first].insert(startCoord);
-
-//                erasePieces(result.state, game.color);
-
-                int end = clock() / CLOCKS_PER_SEC;
-                init = result;
-
-                bTime += (end - start);
-
-                printBoard(result.state.board);
-
-                game.color = (game.color == 0 ? 1 : 0);
-            }
-        }
-
-        cout << "Playtime for A: " << aTime << endl;
-        cout << "Playtime for B: " << bTime << endl;
     }
 
 };
 
 int main() {
-    Reader r("input.txt");
+    Reader r("tests/input8.txt");
     r.read();
 
     Agent a(r.game);
 
     if (r.game.type == 0) {
-        a.singleMovePlayer();
+        a.singleMovePlayer(1);
     } else {
-        a.simulateGame();
+        a.singleMovePlayer(2);
+        a.writePlayData();
     }
+
 
     return 0;
 }
