@@ -30,7 +30,6 @@ end = 0
 for idx, i in enumerate(lines):
     i = i.strip()
     moves = i.split(' ')
-
     if idx == 0:
         start = map(int,moves[1].split(','))
     if idx == len(lines) - 1:

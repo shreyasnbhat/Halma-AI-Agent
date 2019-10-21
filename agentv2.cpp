@@ -555,7 +555,6 @@ int evaluation(int color, State state, Game game) {
     }
     return v + h - 2 * excess;
 }
-
 class MoveCompare {
 public:
     State state;
@@ -736,7 +735,7 @@ public:
             if(ctr == 41) {
                 this->moveNumber = key + 1;
                 if (moveNumber % 10 == 0) {
-                    pieceMoves.clear();
+                    //pieceMoves.clear();
                 }
             }
 
@@ -750,13 +749,16 @@ public:
 
                 if(word.size() != 0) {
                     if (ctr <= 19) {
+                        //cout << "White: " << key << " " << x << " " << y << endl;
                         whites[key] = make_pair(x, y);
                         break;
                     } else if (ctr > 20 && ctr <= 39) {
+                        //cout << "Black: " << key << " " << x << " " << y << endl;
                         blacks[key] = make_pair(x, y);
                         break;
                     } else if(ctr > 41){
                         pieceMoves[key].insert(make_pair(x, y));
+                        //cout << "Key: " << key << " " << x << " " << y << endl;
                     }
                 }
             } while (ss);
@@ -956,6 +958,8 @@ public:
                 }
             }
         }
+
+        //cout << "Got moves for PieceID: " << pieceID << endl;
     }
 
     vector<pair<int, MultiMove>> generateMoves(Node node, bool maxPlayer) {
@@ -1006,6 +1010,34 @@ public:
             Node candidateNode = Node();
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
+            //sort(moves.begin(), moves.end(), MoveCompare(node.state, game , game.color));
+
+//            if(depth == 2) {
+//                for(auto i = 0; i < moves.size(); i++) {
+//                    pair<int, int> coord = moves[i].second.getEndFromMultiMove();
+//
+//                    Node nextNode;
+//                    nextNode = Node(node.state.movePiece(game.color, moves[i].first, coord.first, coord.second, game));
+//                    nextNode.setMove(moves[i]);
+//
+////                    if(coord.first == 11 && coord.second == 13) {
+////                        nextNode.state.print();
+////                    }
+//
+//                    int val = evaluation(game.color, nextNode.state, this->game);
+//
+////                    if(coord.first == 11 && coord.second == 13) {
+////                        printBoard(nextNode.state.board);
+////                    }
+//                    cout << val << " " << moves[i].first << " " << moves[i].second.getRepr();
+//                }
+//            }
+
+            // Sort Moves by eval metric
+
+            // A Heuristic
+            //moves.resize(min(int(moves.size()), 15));
+
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
                 if (game.timeLeft - (clock() / CLOCKS_PER_SEC - startTime) <= 1) {
@@ -1020,7 +1052,6 @@ public:
                     int val = evaluation(game.color,
                                          alphaBetaMove(nextNode, depth - 1, false, alpha, beta,
                                                        startTime).state, this->game);
-
                     if (val > v) {
                         candidateNode = nextNode;
                         v = val;
@@ -1041,6 +1072,34 @@ public:
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
             int other_color = (game.color == 1 ? 0 : 1);
+            //
+//            if(depth == 2) {
+//                for(auto i = 0; i < moves.size(); i++) {
+//                    pair<int, int> coord = moves[i].second.getEndFromMultiMove();
+//
+//                    Node nextNode;
+//                    nextNode = Node(node.state.movePiece(other_color, moves[i].first, coord.first, coord.second, game));
+//                    nextNode.setMove(moves[i]);
+//
+////                    if(coord.first == 11 && coord.second == 13) {
+////                        nextNode.state.print();
+////                    }
+//
+//                    int val = evaluation(game.color, nextNode.state, this->game);
+//
+////                    if(coord.first == 11 && coord.second == 13) {
+////                        printBoard(nextNode.state.board);
+////                    }
+//                    cout << val << " " << moves[i].first << " " << moves[i].second.getRepr();
+//                }
+//            }
+
+
+            // Sort Moves by eval metric
+
+            // A Heuristic
+            //moves.resize(min(int(moves.size()), 15));
+
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
                 if (game.timeLeft - (clock() / CLOCKS_PER_SEC - startTime) <= 1) {
@@ -1070,38 +1129,170 @@ public:
             return candidateNode;
         }
     }
-
-    void singleMovePlayer(int depth) {
+    void singleMovePlayer() {
         Node initial = Node(this->initial);
-
-        if (isGoal(initial.state, this->game)) {
-            return;
-        }
-
-        if(game.color == 0)
-            cout << "WHITE Plays" << endl;
-        else
-            cout << "BLACK Plays" << endl;
-
         int start = clock() / CLOCKS_PER_SEC;
-
-        Node result = alphaBetaMove(initial, depth, true, INT_MIN, INT_MAX, start);
-
-        // Adding pieceHistory
-        int pieceID = result.moveMadeFromThisNode.first;
-        pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
-        pieceMoves[pieceID].insert(startCoord);
-
-        printBoard(result.state.board);
-
-        this->whites = result.state.whites;
-        this->blacks = result.state.blacks;
-
-        //cout << result.moveMadeFromThisNode.second.getRepr() << endl;
+        Node result = alphaBetaMove(initial, 1, true, INT_MIN, INT_MAX, start);
+        //printBoard(result.state.board);
 
         // Write Output
         Writer writer("output.txt");
         writer.write(result.moveMadeFromThisNode.second.getRepr());
+        //cout << result.moveMadeFromThisNode.second.getRepr() << endl;
+    }
+
+    void printPreGame() {
+
+        cout << "-----------------------------" << endl;
+        cout << "White" << endl;
+        vector<pair<int, pair<int, int>>> x;
+        for (auto i = this->whites.begin(); i != this->whites.end(); i++) {
+            x.push_back(make_pair(i->first, make_pair(i->second.first, i->second.second)));
+        }
+
+        sort(x.begin(), x.end());
+        for (auto i = 0; i < x.size(); i++) {
+            cout << x[i].first << " " << x[i].second.first << "," << x[i].second.second << endl;
+        }
+
+        x.clear();
+        cout << "Black" << endl;
+        for (auto i = this->blacks.begin(); i != this->blacks.end(); i++) {
+            x.push_back(make_pair(i->first, make_pair(i->second.first, i->second.second)));
+        }
+
+        sort(x.begin(), x.end());
+        for (auto i = 0; i < x.size(); i++) {
+            cout << x[i].first << " " << x[i].second.first << "," << x[i].second.second << endl;
+        }
+
+        cout << "WhiteAtGoal" << endl;
+        map<int, bool> t;
+        for (auto i = this->whiteAtGoal.begin(); i != this->whiteAtGoal.end(); i++) {
+            t[i->first] = i->second;
+        }
+
+        for (auto i = t.begin(); i != t.end(); i++) {
+            cout << i->first << " " << i->second << endl;
+        }
+
+        t.clear();
+
+        cout << "BlackAtGoal" << endl;
+        for (auto i = this->blackAtGoal.begin(); i != this->blackAtGoal.end(); i++) {
+            t[i->first] = i->second;
+        }
+
+        for (auto i = t.begin(); i != t.end(); i++) {
+            cout << i->first << " " << i->second << endl;
+        }
+
+        t.clear();
+        cout << "-----------------------------" << endl;
+    }
+
+    void simulateGame() {
+        Node init = Node(this->initial);
+
+        int aTime = 0;
+        int bTime = 0;
+
+        for (auto i = 0; i < 500; i++) {
+
+            if (i % 10 == 0) {
+                pieceMoves.clear();
+            }
+
+            if (i % 2 == 0) {
+                // Play
+                if (isGoal(init.state, this->game)) {
+                    cout << "Goal" << endl;
+                    break;
+                }
+
+                if(game.color == 0)
+                    cout << "WHITE Plays" << endl;
+                else
+                    cout << "BLACK Plays" << endl;
+
+                this->whites = init.state.whites;
+                this->blacks = init.state.blacks;
+
+                // Erase Pieces
+                erasePieces();
+
+                init.state.whiteAtGoal = this->whiteAtGoal;
+                init.state.blackAtGoal = this->blackAtGoal;
+
+                int start = clock() / CLOCKS_PER_SEC;
+
+                //printPreGame();
+//                printState(init.state);
+
+                Node result = alphaBetaMove(init, 2, true, INT_MIN, INT_MAX, start);
+
+                // Add piece origin to history
+                pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
+                pieceMoves[result.moveMadeFromThisNode.first].insert(startCoord);
+
+                printBoard(result.state.board);
+                //cout << result.moveMadeFromThisNode.second.getRepr() << endl;
+
+                int end = clock() / CLOCKS_PER_SEC;
+
+                aTime += (end - start);
+
+                init = result;
+
+                game.color = (game.color == 0 ? 1 : 0);
+
+            } else {
+                // Play opponent
+
+                if (isGoal(init.state, this->game)) {
+                    break;
+                }
+
+                if(game.color == 0)
+                    cout << "WHITE Plays" << endl;
+                else
+                    cout << "BLACK Plays" << endl;
+
+                this->whites = init.state.whites;
+                this->blacks = init.state.blacks;
+
+                // Erase Pieces
+                erasePieces();
+
+                init.state.whiteAtGoal = this->whiteAtGoal;
+                init.state.blackAtGoal = this->blackAtGoal;
+
+                int start = clock() / CLOCKS_PER_SEC;
+
+                Node result = alphaBetaMove(init, 2, true, INT_MIN, INT_MAX, start);
+
+                // Add piece origin to history
+                pair<int, int> startCoord = result.moveMadeFromThisNode.second.getStartFromMultiMove();
+                pieceMoves[result.moveMadeFromThisNode.first].insert(startCoord);
+
+                printBoard(result.state.board);
+                //cout << result.moveMadeFromThisNode.second.getRepr() << endl;
+
+                int end = clock() / CLOCKS_PER_SEC;
+                init = result;
+
+                bTime += (end - start);
+
+                game.color = (game.color == 0 ? 1 : 0);
+
+
+            }
+        }
+
+//        cout << "Playtime for A: " << aTime << endl;
+//        cout << "Playtime for B: " << bTime << endl;
+        writePlayData();
+
     }
 
 };
@@ -1110,16 +1301,13 @@ int main() {
     Reader r("tests/input8.txt");
     r.read();
 
-    // Handles setting whitesAtGoal and BlacksAtGoal
     Agent a(r.game);
 
     if (r.game.type == 0) {
-        a.singleMovePlayer(1);
+        a.singleMovePlayer();
     } else {
-        a.singleMovePlayer(2);
-        a.writePlayData();
+        a.simulateGame();
     }
-
 
     return 0;
 }
