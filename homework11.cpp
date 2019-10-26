@@ -8,8 +8,25 @@ using namespace std;
 #define ROW(val) val / 16
 #define COL(val) val % 16
 
-int lineSide(int xm,int ym) {
-    return (xm - ym + 4 >= 0) && (xm - ym - 4 <= 0);
+// Computes Perpendicular Distance from diagonal
+double getPerpendicularDist(int x, int y) {
+    return (abs(x - y) * abs(x - y)) / 2;
+}
+
+double getSquareDist(int x, int y, int playerColor) {
+    if (playerColor == 0) {
+        return x * x + y * y;
+    } else {
+        return (15 - x) * (15 - x) + (15 - y) * (15 - y);
+    }
+}
+
+double getManhattanDist(int x, int y, int playerColor) {
+    if(playerColor == 0) {
+        return (15 - x) + (15 - y);
+    } else {
+        return x + y;
+    }
 }
 
 template<typename T>
@@ -508,105 +525,39 @@ bool isGoal(State state, Game game) {
     return (emptySlotsAtGoal.empty());
 }
 
-
-int evaluation(int color, State state, Game game) {
+// color is game color, so color sets plus variables
+double evaluation(int color, State state, Game game) {
 
     if (isGoal(state, game)) {
         return 2000000;
     }
 
-    int v = 0;
-    int h = 0;
-
-    double excess = 0;
+    // Square Distance
+    double eval1 = 0;
+    // Perpendicular distance from center
+    double eval2 = 0;
+    // Manhattan Distance
+    double eval3 = 0;
 
     map<int, pair<int, int>> plus = (color == 0 ? state.whites : state.blacks);
     map<int, pair<int, int>> minus = (color == 1 ? state.whites : state.blacks);
+    int colorPlus = (color == 0 ? 0 : 1);
+    int colorMinus = (color == 0 ? 1 : 0);
 
     // Vertical Displacement + Horizontal Displacement
-    if (color == 0) {
-        for (auto i = plus.begin(); i != plus.end(); i++) {
-            bool withinLine = lineSide(i->second.first, i->second.second);
-            v += (withinLine ? 2 * (15 - i->second.second) : 15 - i->second.second);
-            h += (withinLine ? 2 * (15 - i->second.first) : 15 - i->second.first);
-            excess += sqrt(i->second.second * i->second.second + i->second.first * i->second.first);
-        }
-        for (auto i = minus.begin(); i != minus.end(); i++) {
-            bool withinLine = lineSide(i->second.first, i->second.second);
-            v -= (withinLine ? i->second.second : 2 * i->second.second);
-            h -= (withinLine ? i->second.first : 2 * i->second.first);
-            excess -= sqrt((15 - i->second.second) * (15 - i->second.second) +
-                           (15 - i->second.first) * (15 - i->second.first));
-        }
-    } else {
-        for (auto i = plus.begin(); i != plus.end(); i++) {
-            bool withinLine = lineSide(i->second.first, i->second.second);
-            v -= (withinLine ? 15 - i->second.second : 2 * (15 - i->second.second));
-            h -= (withinLine ? 15 - i->second.first : 2 * (15 - i->second.first));
-            excess -= sqrt(i->second.second * i->second.second + i->second.first * i->second.first);
-        }
-        for (auto i = minus.begin(); i != minus.end(); i++) {
-            bool withinLine = lineSide(i->second.first, i->second.second);
-            v += (withinLine ? 2 * i->second.second : i->second.second);
-            h += (withinLine ? 2 * i->second.first : i->second.first);
-            excess += sqrt((15 - i->second.second) * (15 - i->second.second) +
-                           (15 - i->second.first) * (15 - i->second.first));
-        }
+    for (auto i = plus.begin(); i != plus.end(); i++) {
+        eval1 -= getSquareDist(i->second.first, i->second.second, colorPlus);
+        eval2 -= getPerpendicularDist(i->second.first, i->second.second);
+        eval3 += getManhattanDist(i->second.first, i->second.second, colorPlus);
     }
-    return v + h - 2 * excess;
+    for (auto i = minus.begin(); i != minus.end(); i++) {
+        eval1 += getSquareDist(i->second.first, i->second.second, colorMinus);
+        eval2 += getPerpendicularDist(i->second.first, i->second.second);
+        eval3 -= getManhattanDist(i->second.first, i->second.second, colorMinus);
+    }
+
+    return 0.9 * eval1 + 0.14 * eval2 + 0.75 * eval3;
 }
-
-class MoveCompare {
-public:
-    State state;
-    int gameColor;
-    int playerColor;
-    Game game;
-
-    MoveCompare(State state, Game game, int playerColor) {
-        this->state = state;
-        this->game = game;
-        this->gameColor = game.color;
-        this->playerColor = playerColor;
-    }
-
-    bool operator()(pair<int, MultiMove> &a, pair<int, MultiMove> &b) {
-
-        pair<int, int> aCoord = a.second.getEndFromMultiMove();
-        pair<int, int> bCoord = b.second.getEndFromMultiMove();
-
-        State aNext = state.movePiece(playerColor, a.first, aCoord.first, aCoord.second, game);
-        State bNext = state.movePiece(playerColor, b.first, bCoord.first, bCoord.second, game);
-
-        return evaluation(gameColor, aNext, game) > evaluation(gameColor, bNext, game);
-    }
-};
-
-class ReverseMoveCompare {
-public:
-    State state;
-    int gameColor;
-    int playerColor;
-    Game game;
-
-    ReverseMoveCompare(State state, Game game, int playerColor) {
-        this->state = state;
-        this->game = game;
-        this->gameColor = game.color;
-        this->playerColor = playerColor;
-    }
-
-    bool operator()(pair<int, MultiMove> &a, pair<int, MultiMove> &b) {
-
-        pair<int, int> aCoord = a.second.getEndFromMultiMove();
-        pair<int, int> bCoord = b.second.getEndFromMultiMove();
-
-        State aNext = state.movePiece(playerColor, a.first, aCoord.first, aCoord.second, game);
-        State bNext = state.movePiece(playerColor, b.first, bCoord.first, bCoord.second, game);
-
-        return evaluation(gameColor, aNext, game) < evaluation(gameColor, bNext, game);
-    }
-};
 
 class Agent {
 public:
@@ -735,9 +686,7 @@ public:
 
             if(ctr == 41) {
                 this->moveNumber = key + 1;
-                if (moveNumber % 10 == 0) {
-                    pieceMoves.clear();
-                }
+
             }
 
             do {
@@ -763,6 +712,9 @@ public:
             ctr++;
         }
 
+        if (this->moveNumber % 10 == 0) {
+            pieceMoves.clear();
+        }
 
     }
 
@@ -868,37 +820,38 @@ public:
         visited[convert1D(x, y)] = true;
         addJumpMoves(jumpMoves, jumpState, visited, state.board, pieceID, x, y);
 
-        pair<int,int> originalCoord = make_pair(x,y);
+        pair<int, int> originalCoord = make_pair(x, y);
 
         if (!jumpMoves.empty()) {
             if (!pieceAtGoal[pieceID]) {
                 for (auto i = 0; i < jumpMoves.size(); i++) {
-                    pair<int,int> coord = jumpMoves[i].second.getEndFromMultiMove();
+                    pair<int, int> coord = jumpMoves[i].second.getEndFromMultiMove();
 
                     // Outside to basecamp is restricted
-                    if(baseCamp.find(originalCoord) == baseCamp.end() && baseCamp.find(coord) != baseCamp.end())
+                    if (baseCamp.find(originalCoord) == baseCamp.end() && baseCamp.find(coord) != baseCamp.end())
                         continue;
 
                     // If coordinate starts and ends in Base Camp restrict movement options.
-                    if(baseCamp.find(originalCoord) != baseCamp.end() && baseCamp.find(coord) != baseCamp.end()) {
-                        if(playerColor == 0 && coord.first <= x && coord.second <= y) {
+                    if (baseCamp.find(originalCoord) != baseCamp.end() && baseCamp.find(coord) != baseCamp.end()) {
+                        if (playerColor == 0 && coord.first <= x && coord.second <= y) {
                             moves.emplace_back(jumpMoves[i]);
-                        } else if(playerColor == 1 && coord.first >= x && coord.second >= y) {
+                        } else if (playerColor == 1 && coord.first >= x && coord.second >= y) {
                             moves.emplace_back(jumpMoves[i]);
                         }
-                    } else if(baseCamp.find(originalCoord) != baseCamp.end() && baseCamp.find(coord) == baseCamp.end()) {
+                    } else if (baseCamp.find(originalCoord) != baseCamp.end() &&
+                               baseCamp.find(coord) == baseCamp.end()) {
                         // Base Camp to outside move
                         moves.emplace_back(jumpMoves[i]);
-                    } else if(pieceMoves[pieceID].find(coord) == pieceMoves[pieceID].end()) {
+                    } else if (pieceMoves[pieceID].find(coord) == pieceMoves[pieceID].end()) {
                         moves.emplace_back(jumpMoves[i]);
                     }
                 }
             } else {
                 for (auto i = 0; i < jumpMoves.size(); i++) {
-                    pair<int,int> coord = jumpMoves[i].second.getEndFromMultiMove();
+                    pair<int, int> coord = jumpMoves[i].second.getEndFromMultiMove();
 
                     // Outside to basecamp is restricted , this assumes a big jump from opposing camp to base camp
-                    if(baseCamp.find(originalCoord) == baseCamp.end() && baseCamp.find(coord) != baseCamp.end())
+                    if (baseCamp.find(originalCoord) == baseCamp.end() && baseCamp.find(coord) != baseCamp.end())
                         continue;
 
                     if (goal.find(coord) != goal.end()) {
@@ -924,7 +877,7 @@ public:
             int x_d = x + neighbours[idx][0];
             int y_d = y + neighbours[idx][1];
 
-            pair<int,int> coord = make_pair(x_d,y_d);
+            pair<int, int> coord = make_pair(x_d, y_d);
 
             MultiMove temp;
             temp.setAdjacentMove(Move(x, y, x_d, y_d));
@@ -933,13 +886,13 @@ public:
                 continue;
 
             // Outside to basecamp is restricted
-            if(baseCamp.find(originalCoord) == baseCamp.end() && baseCamp.find(coord) != baseCamp.end())
+            if (baseCamp.find(originalCoord) == baseCamp.end() && baseCamp.find(coord) != baseCamp.end())
                 continue;
 
             if (legalMove(x_d, y_d) && state.board[y_d][x_d] == '.') {
 
                 if (!pieceAtGoal[pieceID]) {
-                    if(baseCamp.find(originalCoord) != baseCamp.end() && baseCamp.find(coord) != baseCamp.end()) {
+                    if (baseCamp.find(originalCoord) != baseCamp.end() && baseCamp.find(coord) != baseCamp.end()) {
                         if (playerColor == 0 && coord.first <= x && coord.second <= y) {
                             moves.emplace_back(make_pair(pieceID, temp));
                         } else if (playerColor == 1 && coord.first >= x && coord.second >= y) {
@@ -996,20 +949,24 @@ public:
         return moves;
     }
 
-    Node alphaBetaMove(Node &node, int depth, bool maxPlayer, int alpha, int beta, int startTime) {
+    Node alphaBetaMove(Node &node, int depth, bool maxPlayer, double alpha, double beta, int startTime) {
 
         if (depth == 0 || isGoal(node.state, this->game))
             return node;
 
         if (maxPlayer) {
-            int v = INT_MIN;
+            double v = -DBL_MAX;
             Node candidateNode = Node();
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
             for (auto i = 0; i < moves.size(); i++) {
                 // Cutoff at maxTime - 10 seconds
                 if (game.timeLeft - (clock() / CLOCKS_PER_SEC - startTime) <= 1) {
-                    break;
+                    Node nextNode;
+                    pair<int, int> coord = moves[i].second.getEndFromMultiMove();
+                    nextNode = Node(node.state.movePiece(game.color, moves[i].first, coord.first, coord.second, game));
+                    nextNode.setMove(moves[i]);
+                    return nextNode;
                 } else {
                     Node nextNode;
 
@@ -1017,9 +974,9 @@ public:
                     nextNode = Node(node.state.movePiece(game.color, moves[i].first, coord.first, coord.second, game));
                     nextNode.setMove(moves[i]);
 
-                    int val = evaluation(game.color,
-                                         alphaBetaMove(nextNode, depth - 1, false, alpha, beta,
-                                                       startTime).state, this->game);
+                    double val = evaluation(game.color,
+                                            alphaBetaMove(nextNode, depth - 1, false, alpha, beta,
+                                                          startTime).state, this->game);
 
                     if (val > v) {
                         candidateNode = nextNode;
@@ -1032,19 +989,23 @@ public:
                 }
 
             }
-
             return candidateNode;
         } else {
 
-            int v = INT_MAX;
+            double v = DBL_MAX;
             Node candidateNode = Node();
             vector<pair<int, MultiMove>> moves = generateMoves(node, maxPlayer);
 
             int other_color = (game.color == 1 ? 0 : 1);
+
             for (auto i = 0; i < moves.size(); i++) {
-                // Cutoff at maxTime - 10 seconds
+                // If less than a second available
                 if (game.timeLeft - (clock() / CLOCKS_PER_SEC - startTime) <= 1) {
-                    break;
+                    Node nextNode;
+                    pair<int, int> coord = moves[i].second.getEndFromMultiMove();
+                    nextNode = Node(node.state.movePiece(other_color, moves[i].first, coord.first, coord.second, game));
+                    nextNode.setMove(moves[i]);
+                    return nextNode;
                 } else {
                     Node nextNode;
 
@@ -1052,9 +1013,9 @@ public:
                     nextNode = Node(node.state.movePiece(other_color, moves[i].first, coord.first, coord.second, game));
                     nextNode.setMove(moves[i]);
 
-                    int val = evaluation(game.color,
-                                         alphaBetaMove(nextNode, depth - 1, true, alpha, beta,
-                                                       startTime).state, this->game);
+                    double val = evaluation(game.color,
+                                            alphaBetaMove(nextNode, depth - 1, true, alpha, beta,
+                                                          startTime).state, this->game);
 
                     if (val < v) {
                         candidateNode = nextNode;
@@ -1078,11 +1039,6 @@ public:
             return;
         }
 
-        if(game.color == 0)
-            cout << "WHITE Plays" << endl;
-        else
-            cout << "BLACK Plays" << endl;
-
         int start = clock() / CLOCKS_PER_SEC;
 
         Node result = alphaBetaMove(initial, depth, true, INT_MIN, INT_MAX, start);
@@ -1097,8 +1053,6 @@ public:
         this->whites = result.state.whites;
         this->blacks = result.state.blacks;
 
-        //cout << result.moveMadeFromThisNode.second.getRepr() << endl;
-
         // Write Output
         Writer writer("output.txt");
         writer.write(result.moveMadeFromThisNode.second.getRepr());
@@ -1107,7 +1061,7 @@ public:
 };
 
 int main() {
-    Reader r("tests/input8.txt");
+    Reader r("input.txt");
     r.read();
 
     // Handles setting whitesAtGoal and BlacksAtGoal
